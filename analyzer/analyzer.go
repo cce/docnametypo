@@ -15,6 +15,8 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
+const defaultAllowedLeadingWords = "create,creates,creating,initialize,initializes,init,setup,setups,start,starts,read,reads,write,writes,send,sends,generate,generates,decode,decodes,encode,encodes,marshal,marshals,unmarshal,unmarshals,apply,applies,process,processes,make,makes,build,builds,lookup,lookups"
+
 var (
 	maxDistFlag                 = 1
 	includeUnexportedFlag       = true
@@ -22,6 +24,10 @@ var (
 	includeTypesFlag            = false
 	includeGeneratedFlag        = false
 	includeInterfaceMethodsFlag = false
+	allowedLeadingWordsFlag     = defaultAllowedLeadingWords
+	allowedPrefixesFlag         = ""
+	allowedLeadingWords         = map[string]struct{}{}
+	allowedPrefixes             []string
 )
 
 const (
@@ -44,9 +50,14 @@ func init() {
 	Analyzer.Flags.BoolVar(&includeTypesFlag, "include-types", false, "also check type declarations")
 	Analyzer.Flags.BoolVar(&includeGeneratedFlag, "include-generated", false, "check files marked as generated")
 	Analyzer.Flags.BoolVar(&includeInterfaceMethodsFlag, "include-interface-methods", false, "check interface method declarations")
+	Analyzer.Flags.StringVar(&allowedLeadingWordsFlag, "allowed-leading-words", defaultAllowedLeadingWords, "comma-separated list of leading words to ignore (treated as narrative)")
+	Analyzer.Flags.StringVar(&allowedPrefixesFlag, "allowed-prefixes", "", "comma-separated list of symbol prefixes to ignore when matching doc tokens")
 }
 
 func run(pass *analysis.Pass) (any, error) {
+	setAllowedLeadingWords(allowedLeadingWordsFlag)
+	setAllowedPrefixes(allowedPrefixesFlag)
+
 	tokenToAST := make(map[*token.File]*ast.File, len(pass.Files))
 	for _, f := range pass.Files {
 		if f == nil {
@@ -123,6 +134,14 @@ func checkSymbol(pass *analysis.Pass, doc *ast.CommentGroup, name string, export
 
 	firstTok, tokStart, tokEnd := firstIdentifierLike(doc)
 	if firstTok == "" || len(firstTok) < minDocTokenLen {
+		return
+	}
+
+	if isAllowedLeadingWord(firstTok) {
+		return
+	}
+
+	if matchesAllowedPrefixVariant(firstTok, name) {
 		return
 	}
 
@@ -407,6 +426,69 @@ func extractIdentifierToken(word string) (string, int) {
 		return id, removed
 	}
 	return "", 0
+}
+
+func matchesAllowedPrefixVariant(docToken, symbol string) bool {
+	if len(allowedPrefixes) == 0 {
+		return false
+	}
+	symbolLower := strings.ToLower(symbol)
+	for _, rawPrefix := range allowedPrefixes {
+		prefix := strings.TrimSpace(rawPrefix)
+		if prefix == "" {
+			continue
+		}
+		if len(symbol) <= len(prefix) {
+			continue
+		}
+		if !strings.HasPrefix(symbolLower, strings.ToLower(prefix)) {
+			continue
+		}
+		trimmed := symbol[len(prefix):]
+		if trimmed == "" {
+			continue
+		}
+		if strings.EqualFold(docToken, trimmed) {
+			return true
+		}
+	}
+	return false
+}
+
+func isAllowedLeadingWord(word string) bool {
+	if word == "" {
+		return false
+	}
+	_, ok := allowedLeadingWords[strings.ToLower(word)]
+	return ok
+}
+
+func setAllowedLeadingWords(raw string) {
+	allowedLeadingWords = make(map[string]struct{})
+	for _, w := range splitCSV(raw) {
+		if w == "" {
+			continue
+		}
+		allowedLeadingWords[strings.ToLower(w)] = struct{}{}
+	}
+}
+
+func setAllowedPrefixes(raw string) {
+	allowedPrefixes = splitCSV(raw)
+}
+
+func splitCSV(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', ';', '/', '\n', '\t', ' ':
+			return true
+		}
+		return false
+	})
+	return fields
 }
 
 func isCamelSwapVariant(docToken, symbol string) bool {

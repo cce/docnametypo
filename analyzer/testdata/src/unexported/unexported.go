@@ -18,8 +18,8 @@ func (fooServer) serveHTTPv1() {} // want `doc comment starts with 'serveHTTP' b
 // decodePage updates cache entries.
 func encodePage() {} // want `doc comment starts with 'decodePage' but symbol is 'encodePage' \(possible typo or old name\)`
 
-// read reads everything.
-func readAll() {} // want `doc comment starts with 'read' but symbol is 'readAll' \(possible typo or old name\)`
+// Read reads everything but intentionally starts with a verb and should be treated as narrative.
+func readAll() {}
 
 // wsStreamHandler handles websocket streams.
 func wsStreamHandlerV1() {} // want `doc comment starts with 'wsStreamHandler' but symbol is 'wsStreamHandlerV1' \(possible typo or old name\)`

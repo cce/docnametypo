@@ -36,6 +36,17 @@ func TestAnalyzer(t *testing.T) {
 		resetFlags()
 		analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), Analyzer, "fixes")
 	})
+
+	t.Run("narrativeLeadingWords", func(t *testing.T) {
+		resetFlags()
+		analysistest.Run(t, analysistest.TestData(), Analyzer, "narrative")
+	})
+
+	t.Run("allowedPrefixes", func(t *testing.T) {
+		resetFlags()
+		allowedPrefixesFlag = "asm,op"
+		analysistest.Run(t, analysistest.TestData(), Analyzer, "prefixaliases")
+	})
 }
 
 func resetFlags() {
@@ -45,4 +56,6 @@ func resetFlags() {
 	includeTypesFlag = false
 	includeGeneratedFlag = false
 	includeInterfaceMethodsFlag = false
+	allowedLeadingWordsFlag = defaultAllowedLeadingWords
+	allowedPrefixesFlag = ""
 }

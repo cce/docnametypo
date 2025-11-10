@@ -72,5 +72,15 @@ func applySettings(s Settings) error {
 			return fmt.Errorf("set include-interface-methods: %w", err)
 		}
 	}
+	if s.AllowedLeadingWords != nil {
+		if err := analyzer.Analyzer.Flags.Set("allowed-leading-words", *s.AllowedLeadingWords); err != nil {
+			return fmt.Errorf("set allowed-leading-words: %w", err)
+		}
+	}
+	if s.AllowedPrefixes != nil {
+		if err := analyzer.Analyzer.Flags.Set("allowed-prefixes", *s.AllowedPrefixes); err != nil {
+			return fmt.Errorf("set allowed-prefixes: %w", err)
+		}
+	}
 	return nil
 }
