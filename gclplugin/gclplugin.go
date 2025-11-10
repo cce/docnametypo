@@ -67,5 +67,10 @@ func applySettings(s Settings) error {
 			return fmt.Errorf("set include-generated: %w", err)
 		}
 	}
+	if s.IncludeInterfaceMethods != nil {
+		if err := analyzer.Analyzer.Flags.Set("include-interface-methods", strconv.FormatBool(*s.IncludeInterfaceMethods)); err != nil {
+			return fmt.Errorf("set include-interface-methods: %w", err)
+		}
+	}
 	return nil
 }

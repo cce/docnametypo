@@ -31,6 +31,11 @@ func TestAnalyzer(t *testing.T) {
 		includeInterfaceMethodsFlag = true
 		analysistest.Run(t, analysistest.TestData(), Analyzer, "interfaces")
 	})
+
+	t.Run("fixSuggested", func(t *testing.T) {
+		resetFlags()
+		analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), Analyzer, "fixes")
+	})
 }
 
 func resetFlags() {

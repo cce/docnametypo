@@ -28,6 +28,7 @@ The analyzer understands several flags:
 | `-include-exported` | `false` | Also check exported declarations. Enable this if you do not already enforce `// Name ...` elsewhere. |
 | `-include-types` | `false` | Extend the check to `type` declarations (honoring the exported/unexported switches above). |
 | `-include-generated` | `false` | Include files that carry the `// Code generated ... DO NOT EDIT.` header; off by default to avoid noisy generated code. |
+| `-include-interface-methods` | `false` | Check interface method declarations. Useful when interface docs must track implementation names. |
 
 The heuristics intentionally skip obviously narrative comments (`generates keys ...`), `NOTE:`/`TODO:` labels, and cases
 where the prefix/suffix diverges too much, so you only hear about comments that almost certainly meant to reference the
@@ -67,6 +68,7 @@ symbol name.
            original-url: "https://github.com/cce/docnamecheck"
            settings:
              include-exported: true
+             include-interface-methods: true
              include-types: true
              include-generated: false
              maxdist: 2
@@ -83,5 +85,16 @@ symbol name.
 - Works across methods, top-level functions, and (optionally) types, whether or not they are exported.
 
 Because the analyzer is heuristic, the defaults stay conservative: only unexported symbols are checked out of the box so
-that it can complement, rather than duplicate, tools such as `godoclint`. Turn on `-include-exported` and `-include-types`
-when you want broader coverage.
+that it can complement, rather than duplicate, tools such as `godoclint`. Turn on `-include-exported`,
+`-include-interface-methods`, and `-include-types` when you want broader coverage.
+
+### Applying fixes
+
+`docnamecheck` emits suggested fixes that rewrite the stray identifier token inside the doc comment. Run
+
+```shell
+docnamecheck -fix ./...
+```
+
+to automatically apply those edits. The golangci-lint module plugin also respects `golangci-lint run --fix`, so the same
+replacement happens when the linter runs inside larger pipelines.

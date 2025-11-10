@@ -8,6 +8,7 @@ import (
 	"go/token"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -120,7 +121,7 @@ func checkSymbol(pass *analysis.Pass, doc *ast.CommentGroup, name string, export
 		return
 	}
 
-	firstTok, _ := firstIdentifierLike(doc)
+	firstTok, tokStart, tokEnd := firstIdentifierLike(doc)
 	if firstTok == "" || len(firstTok) < minDocTokenLen {
 		return
 	}
@@ -152,67 +153,160 @@ func checkSymbol(pass *analysis.Pass, doc *ast.CommentGroup, name string, export
 	}
 	if match {
 		msg := "doc comment starts with '" + firstTok + "' but symbol is '" + name + "' (possible typo or old name)"
+		var fixes []analysis.SuggestedFix
+		if tokStart.IsValid() && tokEnd.IsValid() && tokStart < tokEnd {
+			fixes = []analysis.SuggestedFix{{
+				Message:   "replace doc token with symbol name",
+				TextEdits: []analysis.TextEdit{{Pos: tokStart, End: tokEnd, NewText: []byte(name)}},
+			}}
+		}
 		pass.Report(analysis.Diagnostic{
-			Pos:     declPos,
-			Message: msg,
+			Pos:            declPos,
+			Message:        msg,
+			SuggestedFixes: fixes,
 		})
 	}
 }
 
 // firstIdentifierLike extracts the first identifier-looking token from the first non-empty
-// line of a comment group (skipping common labels like Deprecated:).
-func firstIdentifierLike(cg *ast.CommentGroup) (string, token.Pos) {
+// line of a comment group (skipping common labels like Deprecated:). It also returns the
+// exact token.Pos range so a SuggestedFix can rewrite the token in-place.
+func firstIdentifierLike(cg *ast.CommentGroup) (string, token.Pos, token.Pos) {
 	if cg == nil || len(cg.List) == 0 {
-		return "", token.NoPos
+		return "", token.NoPos, token.NoPos
 	}
-	line := firstDocLine(cg.List[0].Text)
+	comment := cg.List[0]
+	line, lineOffset := firstDocLine(comment.Text)
 	if line == "" {
-		return "", token.NoPos
+		return "", token.NoPos, token.NoPos
 	}
-	if id := identifierFromLine(line); id != "" {
-		return id, cg.List[0].Slash
+	id, rel := identifierFromLine(line)
+	if id == "" {
+		return "", token.NoPos, token.NoPos
 	}
-	return "", token.NoPos
+	start := comment.Slash + token.Pos(lineOffset+rel)
+	end := start + token.Pos(len(id))
+	return id, start, end
 }
 
-func firstDocLine(raw string) string {
-	text := strings.TrimPrefix(raw, "//")
-	text = strings.TrimPrefix(text, "/*")
-	text = strings.TrimSuffix(text, "*/")
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		line = strings.TrimLeft(line, "*\t ")
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		return line
+func firstDocLine(raw string) (string, int) {
+	if raw == "" {
+		return "", 0
 	}
-	return ""
+	text := raw
+	consumed := 0
+	switch {
+	case strings.HasPrefix(text, "//"):
+		text = text[2:]
+		consumed += 2
+	case strings.HasPrefix(text, "/*"):
+		text = text[2:]
+		consumed += 2
+		text = strings.TrimSuffix(text, "*/")
+	}
+	currentOffset := consumed
+	for len(text) > 0 {
+		newline := strings.IndexByte(text, '\n')
+		var line string
+		var advance int
+		if newline == -1 {
+			line = text
+			advance = len(text)
+			text = ""
+		} else {
+			line = text[:newline]
+			advance = newline + 1
+			text = text[advance:]
+		}
+		lineOffset := currentOffset
+		currentOffset += advance
+		trimmed, leftTrim := trimDocLine(line)
+		lineOffset += leftTrim
+		if trimmed == "" {
+			continue
+		}
+		return trimmed, lineOffset
+	}
+	return "", 0
 }
 
-func identifierFromLine(line string) string {
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return ""
+func trimDocLine(line string) (string, int) {
+	if line == "" {
+		return "", 0
 	}
-	start := 0
-	for start < len(fields) {
-		w := strings.Trim(fields[start], ",.;:()[]{}\t ")
-		lw := strings.ToLower(strings.TrimSuffix(w, ":"))
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') {
+		i++
+	}
+	consumed := i
+	line = line[i:]
+	i = 0
+	for i < len(line) && (line[i] == '*' || line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	consumed += i
+	line = line[i:]
+	i = 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	consumed += i
+	line = line[i:]
+	line = strings.TrimRight(line, " \t\r")
+	return line, consumed
+}
+
+func identifierFromLine(line string) (string, int) {
+	if line == "" {
+		return "", 0
+	}
+	i := 0
+	for i < len(line) {
+		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+			i++
+		}
+		if i >= len(line) {
+			break
+		}
+		tokenStart := i
+		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
+			i++
+		}
+		word := line[tokenStart:i]
+		trimmed, leftTrim := trimWord(word)
+		if trimmed == "" {
+			continue
+		}
+		lw := strings.ToLower(strings.TrimSuffix(trimmed, ":"))
 		if isSkippableLabel(lw) {
-			start++
 			continue
 		}
-		if id := extractIdentifierToken(w); id != "" {
-			return id
+		if id, rel := extractIdentifierToken(trimmed); id != "" {
+			return id, tokenStart + leftTrim + rel
 		}
 		break
 	}
-	return ""
+	return "", 0
+}
+
+func trimWord(word string) (string, int) {
+	left := 0
+	right := len(word)
+	for left < right && isWordBoundary(word[left]) {
+		left++
+	}
+	for right > left && isWordBoundary(word[right-1]) {
+		right--
+	}
+	return word[left:right], left
+}
+
+func isWordBoundary(b byte) bool {
+	switch b {
+	case ',', '.', ';', ':', '(', ')', '[', ']', '{', '}', '\t', ' ', '\r':
+		return true
+	}
+	return false
 }
 
 func checkInterfaceMethods(pass *analysis.Pass, iface *ast.InterfaceType) {
@@ -247,20 +341,27 @@ func isSkippableLabel(w string) bool {
 	return false
 }
 
-func leadingIdentRun(s string) string {
-	// Accept letters, digits, and underscores until first non-identifier rune.
+func trimPointerPrefixes(s string) (string, int) {
+	i := 0
+	for i < len(s) {
+		if s[i] == '*' || s[i] == '&' {
+			i++
+			continue
+		}
+		break
+	}
+	return s[i:], i
+}
+
+func leadingIdentRun(s string) (string, int) {
 	var b strings.Builder
-	for _, r := range s {
-		if r == '-' { // treat hyphen as a breaker (avoid kebab/narrative)
+	i := 0
+	for i < len(s) {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == '-' || r == '.' || r == '"' || r == '\'' {
 			break
 		}
-		if r == '.' || r == '"' || r == '\'' {
-			break
-		}
-		if r == '\n' || r == '\r' || r == '\t' {
-			break
-		}
-		if r == ' ' {
+		if r == '\n' || r == '\r' || r == '\t' || r == ' ' {
 			break
 		}
 		if r == ':' || r == ';' || r == ',' || r == ')' || r == '(' || r == ']' || r == '[' || r == '{' || r == '}' {
@@ -268,28 +369,44 @@ func leadingIdentRun(s string) string {
 		}
 		if ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') || r == '_' {
 			b.WriteRune(r)
+			i += size
 			continue
 		}
-		// any other symbol ends the ident-like run
 		break
 	}
-	return b.String()
+	if b.Len() == 0 {
+		return "", 0
+	}
+	return b.String(), i
 }
 
-func extractIdentifierToken(word string) string {
+func extractIdentifierToken(word string) (string, int) {
 	if word == "" {
-		return ""
+		return "", 0
 	}
 	if strings.Contains(word, ".") {
 		parts := strings.Split(word, ".")
+		offsets := make([]int, len(parts))
+		off := 0
+		for i, part := range parts {
+			offsets[i] = off
+			off += len(part)
+			if i < len(parts)-1 {
+				off++
+			}
+		}
 		for i := len(parts) - 1; i >= 0; i-- {
-			part := strings.TrimLeft(parts[i], "*&")
-			if id := leadingIdentRun(part); id != "" {
-				return id
+			trimmed, removed := trimPointerPrefixes(parts[i])
+			if id, _ := leadingIdentRun(trimmed); id != "" {
+				return id, offsets[i] + removed
 			}
 		}
 	}
-	return leadingIdentRun(word)
+	trimmed, removed := trimPointerPrefixes(word)
+	if id, _ := leadingIdentRun(trimmed); id != "" {
+		return id, removed
+	}
+	return "", 0
 }
 
 func isCamelSwapVariant(docToken, symbol string) bool {
