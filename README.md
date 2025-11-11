@@ -1,12 +1,13 @@
 # docnamecheck
 
+[![build and test](https://github.com/cce/docnamecheck/actions/workflows/test.yml/badge.svg)](https://github.com/cce/docnamecheck/actions/workflows/test.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/cce/docnamecheck.svg)](https://pkg.go.dev/github.com/cce/docnamecheck)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cce/docnamecheck)](https://goreportcard.com/report/github.com/cce/docnamecheck)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-_A doc comment typo detector for Go identifiers that keeps unexported symbols honest and exported ones optionally double-checked._
+_Detect when Go doc comments probably meant to reference the identifier but got it wrong._
 
-`docnamecheck` is a linter that understands your documentation intent. It detects when doc comments appear to reference a function or type name but got it wrong due to typos, refactoring, or copy-paste errors, while allowing you to write narrative comments freely.
+`docnamecheck` is a linter that analyzes the first word in doc comments to understand whether it's attempting to reference the identifier name. It flags cases where the comment's first word seems to intend to reference the identifier but doesn't match, due to typos, refactoring, or copy-paste errors, while allowing you to write narrative comments freely.
 
 ## Table of Contents
 
@@ -24,7 +25,7 @@ _A doc comment typo detector for Go identifiers that keeps unexported symbols ho
 
 ## Why docnamecheck?
 
-Does your team sometimes start doc comments with the function or type name for unexported symbols, but not always? Many teams prefer a relaxed documentation style that allows both:
+Does your codebase sometimes start doc comments with the function or type name for unexported symbols, but not always? Many codebases use a relaxed documentation style that allows both:
 
 ```go
 // parseConfig reads and validates the configuration file
@@ -34,7 +35,7 @@ func parseConfig(path string) error { ... }
 func parseManifest(path string) (*Manifest, error) { ... }
 ```
 
-If you're using linters like `revive` or `go vet`, they'll enforce strict `// Name does X` formatting for exported functions. But for unexported code, your team might not follow this rule consistently, and that's fine.
+If you're using linters like `revive` or `go vet`, they'll enforce strict `// Name does X` formatting for exported functions. But for unexported code, your codebase might not follow this rule consistently, and that's fine.
 
 **The problem:** When you refactor code, it's easy to miss updating doc comments that referenced the old name:
 
@@ -58,7 +59,7 @@ func ServeHTTP(w http.ResponseWriter, r *http.Request) { ... }
 - **Narrative detection**: Skips comments starting with verbs like `Creates`, `Initializes`, `Generates`, etc.
 - **Prefix handling**: Allows configured prefixes like `op` to be stripped before matching
 
-This lets your team maintain a loose practice for documenting code—sometimes using the function name as the first word, sometimes not—while still catching cases where the comment clearly intended to reference the name but got it wrong.
+This lets your codebase maintain a loose practice for documenting code—sometimes using the function name as the first word, sometimes not—while still catching cases where the comment clearly intended to reference the name but got it wrong.
 
 ## Quick Start
 
@@ -239,7 +240,7 @@ If your codebase uses consistent prefixes (e.g., `opThing`, `asmRegister`):
 docnamecheck -allowed-prefixes=op,asm ./...
 ```
 
-This allows doc comments to reference `Thing` when the function is `opThing`.
+This allows doc comments to reference `Thing` in the first word when the function is `opThing`, without flagging this as a typo.
 
 ### For narrative documentation styles
 
