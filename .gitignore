@@ -30,3 +30,5 @@ go.work.sum
 # Temporary files
 *.tmp
 *.bak
+
+.claude
