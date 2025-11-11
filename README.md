@@ -74,6 +74,8 @@ The analyzer understands several flags:
 
 | Flag | Default | Description |
 | --- | --- | --- |
+| `-fix` | `false` | Apply all suggested fixes to rewrite incorrect identifier tokens in doc comments. |
+| `-test` | `true` | Analyze test files in addition to regular source files. |
 | `-maxdist` | `1` | Maximum Damerau-Levenshtein distance before a pair of words stops being considered a typo. |
 | `-include-unexported` | `true` | Check unexported functions/methods/types. This is the primary use case. |
 | `-include-exported` | `false` | Also check exported declarations. Enable this if you do not already enforce `// Name ...` elsewhere. |
@@ -93,7 +95,7 @@ The analyzer understands several flags:
 docnamecheck -fix ./...
 ```
 
-to automatically apply those edits. The golangci-lint module plugin also respects `golangci-lint run --fix`, so the same replacement happens when the linter runs inside larger pipelines.
+to automatically apply those edits. The golangci-lint module plugin also respects `golangci-lint run --fix`, which can configured to apply additional filtering on which paths to include or exclude.
 
 ## golangci-lint Integration
 
@@ -132,7 +134,7 @@ to automatically apply those edits. The golangci-lint module plugin also respect
              include-interface-methods: true
              include-types: true
              include-generated: false
-             allowed-prefixes: asm,op
+             allowed-prefixes: op,ui
              allowed-leading-words: create,creates,setup,read
              maxdist: 2
    ```
@@ -203,8 +205,11 @@ docnamecheck -allowed-leading-words=create,configure,setup,validate,process,hand
 For codebases with consistent symbol prefixes (e.g., `opThing`, `uiRegister`):
 
 ```go
-// Thing does something
+// Thing operates on the UI to add things to the view
 func opThing() { ... }  <- Without -allowed-prefixes, this would be flagged
+
+// Register the new operation with the UI
+func uiRegister() { ... }  <- Without -allowed-prefixes, this would be flagged
 ```
 
 Configure the allowed prefixes:
@@ -237,17 +242,9 @@ This allows doc comments to reference `Thing` in the first word when the functio
 
 4. **Works across all symbol types**: functions, methods, types, and interface methods (based on configuration flags)
 
-Because the analyzer is heuristic, the defaults stay conservative: only unexported symbols are checked out of the box so that it can complement, rather than duplicate, tools such as `godoclint`. Turn on `-include-exported`, `-include-interface-methods`, and `-include-types` when you want broader coverage.
+Because the analyzer is heuristic, the defaults stay conservative: only unexported symbols are checked out of the box so that it can complement, rather than duplicate, tools such as `godoc-lint`. Turn on `-include-exported`, `-include-interface-methods`, and `-include-types` when you want broader coverage.
 
 ## Troubleshooting
-
-### "Why isn't it flagging exported functions?"
-
-By default, `docnamecheck` only checks unexported symbols to avoid duplicating other linters. Enable exported checking with:
-
-```bash
-docnamecheck -include-exported ./...
-```
 
 ### "Too many false positives on narrative comments"
 
@@ -275,12 +272,14 @@ Generated code is excluded by default. If you're still seeing issues, ensure you
 // Code generated ... DO NOT EDIT.
 ```
 
+or use this linter as a golangci-lint plugin with the [`generated: lax`](https://golangci-lint.run/docs/configuration/file/) setting to exclude more patterns.
+
 ### "False positives on prefixed helpers"
 
-If your codebase uses consistent prefixes (e.g., all assembly helpers start with `asm`), use:
+If your codebase uses consistent prefixes (e.g., all UI helpers start with `ui`), use:
 
 ```bash
-docnamecheck -allowed-prefixes=asm ./...
+docnamecheck -allowed-prefixes=ui ./...
 ```
 
 ### "How do I run this in CI?"
