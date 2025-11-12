@@ -14,15 +14,9 @@ func passesDistanceGate(doc, name string, dist int) bool {
 
 	sharedPrefix := commonPrefixLength(doc, name)
 	sharedSuffix := commonSuffixLength(doc, name)
-	shared := sharedPrefix + sharedSuffix
-	if shared > docLen {
-		shared = docLen
-	}
+	shared := min(sharedPrefix+sharedSuffix, docLen)
 
-	required := docLen - dist
-	if required < minDocTokenLen {
-		required = minDocTokenLen
-	}
+	required := max(docLen-dist, minDocTokenLen)
 	if shared >= required {
 		return true
 	}
@@ -32,7 +26,7 @@ func passesDistanceGate(doc, name string, dist int) bool {
 // commonPrefixLength returns the length of the shared prefix.
 func commonPrefixLength(a, b string) int {
 	limit := min(len(a), len(b))
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		if a[i] != b[i] {
 			return i
 		}
