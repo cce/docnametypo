@@ -8,8 +8,17 @@ func Test_passesDistanceGate(t *testing.T) {
 		dist     int
 		want     bool
 	}{
-		{"validateAllowedTopology", "validateAllowedTopologies", 2, true},
-		{"validateAllowedTopology", "Foo", 2, false},
+		{
+			doc:  "validateAllowedTopology",
+			sym:  "validateAllowedTopologies",
+			dist: 2,
+			want: true,
+		},
+		{
+			doc:  "validateAllowedTopology",
+			sym:  "Foo",
+			dist: 2,
+		},
 	}
 	for _, tt := range tests {
 		if got := passesDistanceGate(tt.doc, tt.sym, tt.dist); got != tt.want {

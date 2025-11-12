@@ -7,12 +7,29 @@ func Test_docFirstWordHasDot(t *testing.T) {
 		line string
 		want bool
 	}{
-		{"reflect.DeepEqual doesn't work", true},
-		{"foo.Bar is weird", true},
-		{"UID.Event happens", true},
-		{".Hello starts with dot", true},
-		{"This. is a dot after", true},
-		{"ServeHTTP handles", false},
+		{
+			line: "reflect.DeepEqual doesn't work",
+			want: true,
+		},
+		{
+			line: "foo.Bar is weird",
+			want: true,
+		},
+		{
+			line: "UID.Event happens",
+			want: true,
+		},
+		{
+			line: ".Hello starts with dot",
+			want: true,
+		},
+		{
+			line: "This. is a dot after",
+			want: true,
+		},
+		{
+			line: "ServeHTTP handles",
+		},
 	}
 	for _, tt := range tests {
 		if got := docFirstWordHasDot(tt.line); got != tt.want {
@@ -26,8 +43,15 @@ func Test_containsWildcardToken(t *testing.T) {
 		token, line string
 		want        bool
 	}{
-		{"commonPrefixLen*", "commonPrefixLen* returns", true},
-		{"Token", "Token returns", false},
+		{
+			token: "commonPrefixLen*",
+			line:  "commonPrefixLen* returns",
+			want:  true,
+		},
+		{
+			token: "Token",
+			line:  "Token returns",
+		},
 	}
 	for _, tt := range tests {
 		if got := containsWildcardToken(tt.token, tt.line); got != tt.want {
