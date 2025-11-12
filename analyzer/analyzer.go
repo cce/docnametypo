@@ -7,92 +7,11 @@ import (
 	"go/ast"
 	"go/token"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 )
-
-const defaultAllowedLeadingWords = "create,creates,creating,initialize,initializes,init,configure,configures,setup,setups,start,starts,read,reads,write,writes,send,sends,generate,generates,decode,decodes,encode,encodes,marshal,marshals,unmarshal,unmarshals,apply,applies,process,processes,make,makes,build,builds,test,tests"
-
-var (
-	maxDistFlag                 = 5
-	includeUnexportedFlag       = true
-	includeExportedFlag         = false
-	includeTypesFlag            = false
-	includeGeneratedFlag        = false
-	includeInterfaceMethodsFlag = false
-	allowedLeadingWordsFlag     = defaultAllowedLeadingWords
-	allowedPrefixesFlag         = ""
-	skipPlainWordCamelFlag      = true
-	maxCamelChunkInsertFlag     = 2
-	maxCamelChunkReplaceFlag    = 2
-)
-
-type matchConfig struct {
-	allowedLeadingWords map[string]struct{}
-	allowedPrefixes     []string
-}
-
-func (c matchConfig) isAllowedLeadingWord(word string) bool {
-	if word == "" || len(c.allowedLeadingWords) == 0 {
-		return false
-	}
-	_, ok := c.allowedLeadingWords[strings.ToLower(word)]
-	return ok
-}
-
-func (c matchConfig) matchesAllowedPrefixVariant(docToken, symbol string) bool {
-	if len(c.allowedPrefixes) == 0 {
-		return false
-	}
-	symbolLower := strings.ToLower(symbol)
-	for _, rawPrefix := range c.allowedPrefixes {
-		prefix := strings.TrimSpace(rawPrefix)
-		if prefix == "" {
-			continue
-		}
-		if len(symbol) <= len(prefix) {
-			continue
-		}
-		if !strings.HasPrefix(symbolLower, strings.ToLower(prefix)) {
-			continue
-		}
-		trimmed := symbol[len(prefix):]
-		if trimmed == "" {
-			continue
-		}
-		if strings.EqualFold(docToken, trimmed) {
-			return true
-		}
-	}
-	return false
-}
-
-const (
-	minDocTokenLen   = 3
-	maxChunkDiffSize = 6
-)
-
-func newMatchConfig() matchConfig {
-	return matchConfig{
-		allowedLeadingWords: buildAllowedLeadingWords(allowedLeadingWordsFlag),
-		allowedPrefixes:     splitCSV(allowedPrefixesFlag),
-	}
-}
-
-func buildAllowedLeadingWords(raw string) map[string]struct{} {
-	words := make(map[string]struct{})
-	for _, w := range splitCSV(raw) {
-		if w == "" {
-			continue
-		}
-		words[strings.ToLower(w)] = struct{}{}
-	}
-	return words
-}
 
 // Analyzer implements the check.
 var Analyzer = newAnalyzer()
@@ -132,8 +51,10 @@ func run(pass *analysis.Pass) (any, error) {
 			tokenToAST[tf] = f
 		}
 	}
+
 	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	nodeFilter := []ast.Node{(*ast.FuncDecl)(nil), (*ast.GenDecl)(nil)}
+
 	ins.Preorder(nodeFilter, func(n ast.Node) {
 		if !includeGeneratedFlag {
 			if tf := pass.Fset.File(n.Pos()); tf != nil {
@@ -142,12 +63,14 @@ func run(pass *analysis.Pass) (any, error) {
 				}
 			}
 		}
+
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			if node.Doc == nil || node.Name == nil {
 				return
 			}
 			checkSymbol(pass, cfg, node.Doc, node.Name.Name, ast.IsExported(node.Name.Name), kindFunc, node.Name.Pos())
+
 		case *ast.GenDecl:
 			if node.Tok != token.TYPE {
 				return
@@ -157,6 +80,7 @@ func run(pass *analysis.Pass) (any, error) {
 				if !ok || ts.Name == nil {
 					continue
 				}
+
 				if includeTypesFlag {
 					doc := ts.Doc
 					if doc == nil {
@@ -166,6 +90,7 @@ func run(pass *analysis.Pass) (any, error) {
 						checkSymbol(pass, cfg, doc, ts.Name.Name, ast.IsExported(ts.Name.Name), kindType, ts.Name.Pos())
 					}
 				}
+
 				if includeInterfaceMethodsFlag {
 					if iface, ok := ts.Type.(*ast.InterfaceType); ok {
 						checkInterfaceMethods(pass, cfg, iface)
@@ -174,6 +99,7 @@ func run(pass *analysis.Pass) (any, error) {
 			}
 		}
 	})
+
 	return nil, nil
 }
 
@@ -184,6 +110,7 @@ const (
 	kindType
 )
 
+// checkSymbol compares the comment token against the provided symbol.
 func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, name string, exported bool, kind symbolKind, declPos token.Pos) {
 	if name == "" || doc == nil {
 		return
@@ -205,31 +132,24 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 	if docFirstWordHasDot(docLine) {
 		return
 	}
-
 	if cfg.isAllowedLeadingWord(firstTok) {
 		return
 	}
-
 	if cfg.matchesAllowedPrefixVariant(firstTok, name) {
 		return
 	}
-
 	if isSectionHeader(firstTok, docLine) {
 		return
 	}
-
 	if isNarrativeSentenceIntro(firstTok, docLine) {
 		return
 	}
-
 	if containsWildcardToken(firstTok, docLine) {
 		return
 	}
-
 	if kind == kindFunc && isNarrativeVerbForm(firstTok, name) {
 		return
 	}
-
 	if skipPlainWordCamelFlag && looksLikeSimpleWord(firstTok) && hasCamelCaseInterior(name) {
 		return
 	}
@@ -246,6 +166,7 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 			match = false
 		}
 	}
+
 	if !match && isCamelSwapVariant(firstTok, name) {
 		match = true
 	}
@@ -264,169 +185,33 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 	if !match && nameLower != "" && docLower != "" && hasSmallChunkDifference(docLower, nameLower, maxChunkDiffSize) {
 		match = true
 	}
-	if match {
-		msg := "doc comment starts with '" + firstTok + "' but symbol is '" + name + "' (possible typo or old name)"
-		var fixes []analysis.SuggestedFix
-		if tokStart.IsValid() && tokEnd.IsValid() && tokStart < tokEnd {
-			fixes = []analysis.SuggestedFix{{
-				Message:   "replace doc token with symbol name",
-				TextEdits: []analysis.TextEdit{{Pos: tokStart, End: tokEnd, NewText: []byte(name)}},
-			}}
-		}
-		pass.Report(analysis.Diagnostic{
-			Pos:            declPos,
-			Message:        msg,
-			SuggestedFixes: fixes,
-		})
+
+	if !match {
+		return
 	}
+
+	msg := "doc comment starts with '" + firstTok + "' but symbol is '" + name + "' (possible typo or old name)"
+	var fixes []analysis.SuggestedFix
+	if tokStart.IsValid() && tokEnd.IsValid() && tokStart < tokEnd {
+		fixes = []analysis.SuggestedFix{{
+			Message:   "replace doc token with symbol name",
+			TextEdits: []analysis.TextEdit{{Pos: tokStart, End: tokEnd, NewText: []byte(name)}},
+		}}
+	}
+
+	pass.Report(analysis.Diagnostic{
+		Pos:            declPos,
+		Message:        msg,
+		SuggestedFixes: fixes,
+	})
 }
 
-// firstIdentifierLike extracts the first identifier-looking token from the first non-empty
-// line of a comment group (skipping common labels like Deprecated:). It also returns the
-// exact token.Pos range so a SuggestedFix can rewrite the token in-place, and the
-// trimmed first line for additional heuristics.
-func firstIdentifierLike(cg *ast.CommentGroup) (string, token.Pos, token.Pos, string) {
-	if cg == nil || len(cg.List) == 0 {
-		return "", token.NoPos, token.NoPos, ""
-	}
-	comment := cg.List[0]
-	line, lineOffset := firstDocLine(comment.Text)
-	if line == "" {
-		return "", token.NoPos, token.NoPos, ""
-	}
-	id, rel := identifierFromLine(line)
-	if id == "" {
-		return "", token.NoPos, token.NoPos, line
-	}
-	start := comment.Slash + token.Pos(lineOffset+rel)
-	end := start + token.Pos(len(id))
-	return id, start, end, line
-}
-
-func firstDocLine(raw string) (string, int) {
-	if raw == "" {
-		return "", 0
-	}
-	text := raw
-	consumed := 0
-	switch {
-	case strings.HasPrefix(text, "//"):
-		text = text[2:]
-		consumed += 2
-	case strings.HasPrefix(text, "/*"):
-		text = text[2:]
-		consumed += 2
-		text = strings.TrimSuffix(text, "*/")
-	}
-	currentOffset := consumed
-	for len(text) > 0 {
-		newline := strings.IndexByte(text, '\n')
-		var line string
-		var advance int
-		if newline == -1 {
-			line = text
-			advance = len(text)
-			text = ""
-		} else {
-			line = text[:newline]
-			advance = newline + 1
-			text = text[advance:]
-		}
-		lineOffset := currentOffset
-		currentOffset += advance
-		trimmed, leftTrim := trimDocLine(line)
-		lineOffset += leftTrim
-		if trimmed == "" {
-			continue
-		}
-		return trimmed, lineOffset
-	}
-	return "", 0
-}
-
-func trimDocLine(line string) (string, int) {
-	if line == "" {
-		return "", 0
-	}
-	i := 0
-	for i < len(line) && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') {
-		i++
-	}
-	consumed := i
-	line = line[i:]
-	i = 0
-	for i < len(line) && (line[i] == '*' || line[i] == ' ' || line[i] == '\t') {
-		i++
-	}
-	consumed += i
-	line = line[i:]
-	i = 0
-	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-		i++
-	}
-	consumed += i
-	line = line[i:]
-	line = strings.TrimRight(line, " \t\r")
-	return line, consumed
-}
-
-func identifierFromLine(line string) (string, int) {
-	if line == "" {
-		return "", 0
-	}
-	i := 0
-	for i < len(line) {
-		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-			i++
-		}
-		if i >= len(line) {
-			break
-		}
-		tokenStart := i
-		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
-			i++
-		}
-		word := line[tokenStart:i]
-		trimmed, leftTrim := trimWord(word)
-		if trimmed == "" {
-			continue
-		}
-		lw := strings.ToLower(strings.TrimSuffix(trimmed, ":"))
-		if isSkippableLabel(lw) {
-			continue
-		}
-		if id, rel := extractIdentifierToken(trimmed); id != "" {
-			return id, tokenStart + leftTrim + rel
-		}
-		break
-	}
-	return "", 0
-}
-
-func trimWord(word string) (string, int) {
-	left := 0
-	right := len(word)
-	for left < right && isWordBoundary(word[left]) {
-		left++
-	}
-	for right > left && isWordBoundary(word[right-1]) {
-		right--
-	}
-	return word[left:right], left
-}
-
-func isWordBoundary(b byte) bool {
-	switch b {
-	case ',', '.', ';', ':', '(', ')', '[', ']', '{', '}', '\t', ' ', '\r':
-		return true
-	}
-	return false
-}
-
+// checkInterfaceMethods inspects each interface method doc comment.
 func checkInterfaceMethods(pass *analysis.Pass, cfg matchConfig, iface *ast.InterfaceType) {
 	if iface == nil || iface.Methods == nil {
 		return
 	}
+
 	for _, field := range iface.Methods.List {
 		if field == nil || len(field.Names) == 0 {
 			continue
@@ -446,567 +231,3 @@ func checkInterfaceMethods(pass *analysis.Pass, cfg matchConfig, iface *ast.Inte
 		}
 	}
 }
-
-func isSkippableLabel(w string) bool {
-	switch w {
-	case "deprecated", "todo", "note", "fixme", "nolint", "lint", "warning":
-		return true
-	}
-	return false
-}
-
-func trimPointerPrefixes(s string) (string, int) {
-	i := 0
-	for i < len(s) {
-		if s[i] == '*' || s[i] == '&' {
-			i++
-			continue
-		}
-		break
-	}
-	return s[i:], i
-}
-
-func leadingIdentRun(s string) (string, int) {
-	var b strings.Builder
-	i := 0
-	for i < len(s) {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		if r == '-' || r == '.' || r == '"' || r == '\'' {
-			break
-		}
-		if r == '\n' || r == '\r' || r == '\t' || r == ' ' {
-			break
-		}
-		if r == ':' || r == ';' || r == ',' || r == ')' || r == '(' || r == ']' || r == '[' || r == '{' || r == '}' {
-			break
-		}
-		if ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') || r == '_' {
-			b.WriteRune(r)
-			i += size
-			continue
-		}
-		break
-	}
-	if b.Len() == 0 {
-		return "", 0
-	}
-	return b.String(), i
-}
-
-func extractIdentifierToken(word string) (string, int) {
-	if word == "" {
-		return "", 0
-	}
-	if strings.Contains(word, ".") {
-		parts := strings.Split(word, ".")
-		offsets := make([]int, len(parts))
-		off := 0
-		for i, part := range parts {
-			offsets[i] = off
-			off += len(part)
-			if i < len(parts)-1 {
-				off++
-			}
-		}
-		for i := len(parts) - 1; i >= 0; i-- {
-			trimmed, removed := trimPointerPrefixes(parts[i])
-			if id, _ := leadingIdentRun(trimmed); id != "" {
-				return id, offsets[i] + removed
-			}
-		}
-	}
-	trimmed, removed := trimPointerPrefixes(word)
-	if id, _ := leadingIdentRun(trimmed); id != "" {
-		return id, removed
-	}
-	return "", 0
-}
-
-func splitCSV(raw string) []string {
-	if raw == "" {
-		return nil
-	}
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		switch r {
-		case ',', ';', '/', '\n', '\t', ' ':
-			return true
-		}
-		return false
-	})
-	return fields
-}
-
-func isCamelSwapVariant(docToken, symbol string) bool {
-	docWords := splitCamelWords(docToken)
-	symbolWords := splitCamelWords(symbol)
-	if len(docWords) != len(symbolWords) || len(docWords) < 2 {
-		return false
-	}
-	var diffs [2]int
-	diffCount := 0
-	for i := range docWords {
-		if docWords[i] == symbolWords[i] {
-			continue
-		}
-		if diffCount == len(diffs) {
-			return false
-		}
-		diffs[diffCount] = i
-		diffCount++
-	}
-	if diffCount != 2 {
-		return false
-	}
-	i, j := diffs[0], diffs[1]
-	return docWords[i] == symbolWords[j] && docWords[j] == symbolWords[i]
-}
-
-func splitCamelWords(s string) []string {
-	s = strings.ReplaceAll(s, "_", "")
-	if s == "" {
-		return nil
-	}
-	runes := []rune(s)
-	var words []string
-	start := 0
-	for i := 1; i < len(runes); i++ {
-		if camelWordBoundary(runes, i) {
-			if w := strings.ToLower(string(runes[start:i])); w != "" {
-				words = append(words, w)
-			}
-			start = i
-		}
-	}
-	if start < len(runes) {
-		if w := strings.ToLower(string(runes[start:])); w != "" {
-			words = append(words, w)
-		}
-	}
-	return words
-}
-
-func hasSimilarCamelWord(docToken, symbol string) bool {
-	docWords := splitCamelWords(docToken)
-	symbolWords := splitCamelWords(symbol)
-	if len(docWords) == 0 || len(docWords) != len(symbolWords) {
-		return false
-	}
-	mismatches := 0
-	for i := range docWords {
-		if docWords[i] == symbolWords[i] {
-			continue
-		}
-		if !wordClose(docWords[i], symbolWords[i]) {
-			return false
-		}
-		mismatches++
-		if mismatches > 1 {
-			return false
-		}
-	}
-	return mismatches > 0
-}
-
-func wordClose(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	al := strings.ToLower(a)
-	bl := strings.ToLower(b)
-	if al == bl {
-		return true
-	}
-	dist := damerauLevenshtein(al, bl)
-	if dist > maxDistFlag+1 {
-		return false
-	}
-	minLen := min(len(al), len(bl))
-	if minLen <= 1 {
-		return false
-	}
-	threshold := minLen - 2
-	if threshold < 2 {
-		threshold = minLen
-	}
-	prefix := commonPrefixLength(al, bl)
-	suffix := commonSuffixLength(al, bl)
-	return prefix >= threshold || suffix >= threshold
-}
-
-func isNarrativeVerbForm(word, funcName string) bool {
-	if len(word) < 2 {
-		return false
-	}
-	lowerWord := strings.ToLower(word)
-	if !strings.HasSuffix(lowerWord, "s") {
-		return false
-	}
-	stem := lowerWord[:len(lowerWord)-1]
-	if stem == "" {
-		return false
-	}
-	return strings.HasPrefix(strings.ToLower(funcName), stem)
-}
-
-func camelWordBoundary(runes []rune, idx int) bool {
-	prev := runes[idx-1]
-	curr := runes[idx]
-
-	if unicode.IsDigit(prev) != unicode.IsDigit(curr) {
-		return true
-	}
-	if unicode.IsLetter(prev) != unicode.IsLetter(curr) {
-		return true
-	}
-	if unicode.IsLower(prev) && unicode.IsUpper(curr) {
-		return true
-	}
-	if unicode.IsUpper(prev) && unicode.IsUpper(curr) {
-		if idx+1 < len(runes) && unicode.IsLower(runes[idx+1]) {
-			return true
-		}
-	}
-	return false
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-func commonPrefixLength(a, b string) int {
-	minLen := min(len(a), len(b))
-	for i := 0; i < minLen; i++ {
-		if a[i] != b[i] {
-			return i
-		}
-	}
-	return minLen
-}
-
-func commonSuffixLength(a, b string) int {
-	ia := len(a) - 1
-	ib := len(b) - 1
-	count := 0
-	for ia >= 0 && ib >= 0 {
-		if a[ia] != b[ib] {
-			break
-		}
-		count++
-		ia--
-		ib--
-	}
-	return count
-}
-
-func hasSmallChunkDifference(a, b string, maxChunk int) bool {
-	if maxChunk <= 0 {
-		return false
-	}
-	if len(a) == len(b) {
-		return false
-	}
-	if len(a) < len(b) {
-		return hasSmallChunkDifference(b, a, maxChunk)
-	}
-	diff := len(a) - len(b)
-	if diff > maxChunk {
-		return false
-	}
-	for i := 0; i <= len(a)-diff; i++ {
-		if strings.HasPrefix(b, a[:i]) && strings.HasSuffix(b, a[i+diff:]) {
-			return true
-		}
-	}
-	return false
-}
-
-func hasCamelChunkReplacement(docToken, symbol string, maxMismatch int) bool {
-	if maxMismatch <= 0 {
-		return false
-	}
-	docWords := splitCamelWords(docToken)
-	symWords := splitCamelWords(symbol)
-	if len(docWords) == 0 || len(docWords) != len(symWords) {
-		return false
-	}
-	if len(docWords) < 2 {
-		return false
-	}
-	mismatches := 0
-	matches := 0
-	for i := range docWords {
-		if docWords[i] == symWords[i] {
-			matches++
-			continue
-		}
-		mismatches++
-		if mismatches > maxMismatch {
-			return false
-		}
-	}
-	if mismatches == 0 {
-		return false
-	}
-	return matches >= len(docWords)-maxMismatch && matches > 0
-}
-
-func hasCamelChunkInsertionOrRemoval(docToken, symbol string, maxChunkDiff int) bool {
-	if maxChunkDiff <= 0 {
-		return false
-	}
-	docWords := splitCamelWords(docToken)
-	symWords := splitCamelWords(symbol)
-	if len(docWords) == 0 || len(symWords) == 0 {
-		return false
-	}
-	diff := abs(len(docWords) - len(symWords))
-	if diff == 0 || diff > maxChunkDiff {
-		return false
-	}
-	if len(docWords) > len(symWords) {
-		return camelSubsequence(symWords, docWords, maxChunkDiff)
-	}
-	return camelSubsequence(docWords, symWords, maxChunkDiff)
-}
-
-func camelSubsequence(shorter, longer []string, maxSkips int) bool {
-	if len(shorter) == 0 || len(longer) == 0 {
-		return false
-	}
-	i, j := 0, 0
-	skips := 0
-	for i < len(shorter) && j < len(longer) {
-		if shorter[i] == longer[j] {
-			i++
-			j++
-			continue
-		}
-		j++
-		skips++
-		if skips > maxSkips {
-			return false
-		}
-	}
-	return i == len(shorter) && (len(shorter) > 0)
-}
-
-var sectionHeaderSecondWords = map[string]struct{}{
-	"helper":   {},
-	"helpers":  {},
-	"section":  {},
-	"sections": {},
-	"overview": {},
-	"summary":  {},
-}
-
-var narrativeSecondWords = map[string]struct{}{
-	"that":    {},
-	"the":     {},
-	"a":       {},
-	"an":      {},
-	"this":    {},
-	"these":   {},
-	"those":   {},
-	"whether": {},
-	"if":      {},
-}
-
-func isSectionHeader(firstTok, line string) bool {
-	if firstTok == "" || line == "" {
-		return false
-	}
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return false
-	}
-	first := stripWordToken(fields[0])
-	if !strings.EqualFold(firstTok, first) {
-		return false
-	}
-	second := strings.ToLower(stripWordToken(fields[1]))
-	if second == "" {
-		return false
-	}
-	_, ok := sectionHeaderSecondWords[second]
-	return ok
-}
-
-func isNarrativeSentenceIntro(firstTok, line string) bool {
-	if !looksLikeSimpleWord(firstTok) || line == "" {
-		return false
-	}
-	fields := strings.Fields(line)
-	if len(fields) < 2 {
-		return false
-	}
-	first := stripWordToken(fields[0])
-	if !strings.EqualFold(firstTok, first) {
-		return false
-	}
-	second := strings.ToLower(stripWordToken(fields[1]))
-	if second == "" {
-		return false
-	}
-	_, ok := narrativeSecondWords[second]
-	return ok
-}
-
-func containsWildcardToken(token, line string) bool {
-	if strings.ContainsAny(token, "*?[]") {
-		return true
-	}
-	if token == "" || line == "" {
-		return false
-	}
-	lowerLine := strings.ToLower(line)
-	lowerToken := strings.ToLower(token)
-	if strings.HasPrefix(lowerLine, lowerToken) {
-		if len(lowerLine) > len(lowerToken) {
-			next := lowerLine[len(lowerToken)]
-			return next == '*'
-		}
-	}
-	return false
-}
-
-func looksLikeSimpleWord(word string) bool {
-	if word == "" {
-		return false
-	}
-	runes := []rune(word)
-	for _, r := range runes {
-		if !unicode.IsLetter(r) {
-			return false
-		}
-	}
-	if len(runes) == 1 {
-		return true
-	}
-	rest := strings.ToLower(string(runes[1:]))
-	if rest != string(runes[1:]) {
-		return false
-	}
-	return unicode.IsLower(runes[0]) || unicode.IsUpper(runes[0])
-}
-
-func hasCamelCaseInterior(name string) bool {
-	for i, r := range name {
-		if unicode.IsUpper(r) && i > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func stripWordToken(word string) string {
-	return strings.Trim(word, " \t:.,;\r\n-*")
-}
-
-func docFirstWordHasDot(line string) bool {
-	if line == "" {
-		return false
-	}
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return false
-	}
-	word := fields[0]
-	idx := strings.IndexByte(word, '.')
-	if idx == -1 {
-		return false
-	}
-	prefix := word[:idx]
-	if prefix == "" {
-		return true
-	}
-	if prefix == strings.ToLower(prefix) {
-		return true
-	}
-	return false
-}
-
-func passesDistanceGate(doc, name string, dist int) bool {
-	if dist <= 0 {
-		return false
-	}
-	docLen := len(doc)
-	nameLen := len(name)
-	if docLen < minDocTokenLen+dist {
-		return false
-	}
-	if nameLen < minDocTokenLen {
-		return false
-	}
-	sharedPrefix := commonPrefixLength(doc, name)
-	sharedSuffix := commonSuffixLength(doc, name)
-	shared := sharedPrefix + sharedSuffix
-	if shared > docLen {
-		shared = docLen
-	}
-	required := docLen - dist
-	if required < minDocTokenLen {
-		required = minDocTokenLen
-	}
-	if shared >= required {
-		return true
-	}
-	if docLen >= 2*minDocTokenLen && shared*2 >= docLen && docLen-shared <= dist {
-		return true
-	}
-	return false
-}
-
-// damerauLevenshtein computes the optimal string edit distance with transpositions.
-// Simple O(len(a)*len(b)) DP; fine for short identifiers.
-func damerauLevenshtein(a, b string) int {
-	ra := []rune(a)
-	rb := []rune(b)
-	na := len(ra)
-	nb := len(rb)
-	if na == 0 {
-		return nb
-	}
-	if nb == 0 {
-		return na
-	}
-	d := make([][]int, na+1)
-	for i := 0; i <= na; i++ {
-		d[i] = make([]int, nb+1)
-		d[i][0] = i
-	}
-	for j := 0; j <= nb; j++ {
-		d[0][j] = j
-	}
-
-	for i := 1; i <= na; i++ {
-		for j := 1; j <= nb; j++ {
-			cost := 0
-			if ra[i-1] != rb[j-1] {
-				cost = 1
-			}
-			del := d[i-1][j] + 1
-			ins := d[i][j-1] + 1
-			sub := d[i-1][j-1] + cost
-			v := min3(del, ins, sub)
-			// transposition
-			if i > 1 && j > 1 && ra[i-1] == rb[j-2] && ra[i-2] == rb[j-1] {
-				v = min(v, d[i-2][j-2]+1)
-			}
-			d[i][j] = v
-		}
-	}
-	return d[na][nb]
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func min3(a, b, c int) int { return min(min(a, b), c) }
