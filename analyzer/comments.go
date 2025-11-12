@@ -95,23 +95,32 @@ func identifierFromLine(line string) (string, int) {
 		return "", 0
 	}
 	i := 0
+	isDocSpace := func(r rune) bool { return r == ' ' || r == '\t' }
 	for i < len(line) {
-		for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-			i++
-		}
-		if i >= len(line) {
+		rest := line[i:]
+		skip := strings.IndexFunc(rest, func(r rune) bool { return !isDocSpace(r) })
+		if skip == -1 {
 			break
 		}
+		i += skip
 		tokenStart := i
-		for i < len(line) && line[i] != ' ' && line[i] != '\t' {
-			i++
+
+		wordLen := strings.IndexFunc(line[i:], isDocSpace)
+		if wordLen == -1 {
+			wordLen = len(line) - i
 		}
-		word := line[tokenStart:i]
+		word := line[tokenStart : tokenStart+wordLen]
+		i += wordLen
+
 		trimmed, leftTrim := trimWord(word)
 		if trimmed == "" {
 			continue
 		}
-		lw := strings.ToLower(strings.TrimSuffix(trimmed, ":"))
+		label := trimmed
+		if withoutColon, ok := strings.CutSuffix(label, ":"); ok {
+			label = withoutColon
+		}
+		lw := strings.ToLower(label)
 		if isSkippableLabel(lw) {
 			continue
 		}
@@ -125,20 +134,15 @@ func identifierFromLine(line string) (string, int) {
 
 // trimWord strips punctuation around a token and returns the offset.
 func trimWord(word string) (string, int) {
-	left := 0
-	right := len(word)
-	for left < right && isWordBoundary(word[left]) {
-		left++
-	}
-	for right > left && isWordBoundary(word[right-1]) {
-		right--
-	}
-	return word[left:right], left
+	trimmed := strings.TrimLeftFunc(word, isWordBoundaryRune)
+	left := len(word) - len(trimmed)
+	trimmed = strings.TrimRightFunc(trimmed, isWordBoundaryRune)
+	return trimmed, left
 }
 
-// isWordBoundary reports whether the rune terminates identifier scanning.
-func isWordBoundary(b byte) bool {
-	switch b {
+// isWordBoundaryRune reports whether the rune terminates identifier scanning.
+func isWordBoundaryRune(r rune) bool {
+	switch r {
 	case ',', '.', ';', ':', '(', ')', '[', ']', '{', '}', '\t', ' ', '\r':
 		return true
 	}

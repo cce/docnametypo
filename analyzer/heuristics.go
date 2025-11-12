@@ -87,8 +87,8 @@ func containsWildcardToken(token, line string) bool {
 
 	lowerLine := strings.ToLower(line)
 	lowerToken := strings.ToLower(token)
-	if strings.HasPrefix(lowerLine, lowerToken) && len(lowerLine) > len(lowerToken) {
-		return lowerLine[len(lowerToken)] == '*'
+	if rest, ok := strings.CutPrefix(lowerLine, lowerToken); ok && rest != "" {
+		return strings.HasPrefix(rest, "*")
 	}
 	return false
 }
@@ -146,12 +146,8 @@ func isNarrativeVerbForm(word, funcName string) bool {
 	if len(word) < 2 {
 		return false
 	}
-	lowerWord := strings.ToLower(word)
-	if !strings.HasSuffix(lowerWord, "s") {
-		return false
-	}
-	stem := lowerWord[:len(lowerWord)-1]
-	if stem == "" {
+	stem, ok := strings.CutSuffix(strings.ToLower(word), "s")
+	if !ok || stem == "" {
 		return false
 	}
 	return strings.HasPrefix(strings.ToLower(funcName), stem)
