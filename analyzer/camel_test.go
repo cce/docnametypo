@@ -2,7 +2,7 @@ package analyzer
 
 import "testing"
 
-func TestHasCamelChunkReplacement(t *testing.T) {
+func Test_hasCamelChunkReplacement(t *testing.T) {
 	tests := []struct {
 		doc, sym string
 		max      int
@@ -21,7 +21,7 @@ func TestHasCamelChunkReplacement(t *testing.T) {
 	}
 }
 
-func TestHasCamelChunkInsertionOrRemoval(t *testing.T) {
+func Test_hasCamelChunkInsertionOrRemoval(t *testing.T) {
 	tests := []struct {
 		doc, sym string
 		max      int
@@ -40,7 +40,7 @@ func TestHasCamelChunkInsertionOrRemoval(t *testing.T) {
 	}
 }
 
-func TestIsCamelSwapVariant(t *testing.T) {
+func Test_isCamelSwapVariant(t *testing.T) {
 	tests := []struct {
 		doc, sym string
 		want     bool
@@ -56,7 +56,7 @@ func TestIsCamelSwapVariant(t *testing.T) {
 	}
 }
 
-func TestSplitCamelWords(t *testing.T) {
+func Test_splitCamelWords(t *testing.T) {
 	tests := []struct {
 		input string
 		want  []string
@@ -69,6 +69,7 @@ func TestSplitCamelWords(t *testing.T) {
 		if len(got) != len(tt.want) {
 			t.Fatalf("splitCamelWords(%q)=%v want %v", tt.input, got, tt.want)
 		}
+
 		for i := range got {
 			if got[i] != tt.want[i] {
 				t.Fatalf("splitCamelWords(%q)=%v want %v", tt.input, got, tt.want)

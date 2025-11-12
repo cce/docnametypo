@@ -7,67 +7,88 @@ import (
 )
 
 func TestAnalyzer(t *testing.T) {
-	t.Run("defaults", func(t *testing.T) {
-		resetFlags()
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "unexported")
-	})
+	testCases := []struct {
+		desc  string
+		setup func()
+		dir   string
+	}{
+		{
+			desc: "defaults",
+			dir:  "unexported",
+		},
+		{
+			desc: "exportedAndTypes",
+			setup: func() {
+				includeExportedFlag = true
+				includeTypesFlag = true
+			},
+			dir: "exported",
+		},
+		{
+			desc: "generatedOptIn",
+			setup: func() {
+				includeExportedFlag = true
+				includeGeneratedFlag = true
+			},
+			dir: "generatedcode",
+		},
+		{
+			desc: "interfaceMethodsOptIn",
+			setup: func() {
+				includeInterfaceMethodsFlag = true
+			},
+			dir: "interfaces",
+		},
+		{
+			desc: "narrativeLeadingWords",
+			dir:  "narrative",
+		},
+		{
+			desc: "allowedPrefixes",
+			setup: func() {
+				allowedPrefixesFlag = "asm,op"
+			},
+			dir: "prefixaliases",
+		},
+		{
+			desc: "plainWordCamelFlag",
+			dir:  "plainwordcamel",
+		},
+		{
+			desc: "plainWordCamelFlagDisabled",
+			setup: func() {
+				skipPlainWordCamelFlag = false
+			},
+			dir: "plainwordcamelexpect",
+		},
+		{
+			desc: "maxDistanceGate",
+			setup: func() {
+				maxDistFlag = 5
+			},
+			dir: "maxdistance",
+		},
+		{
+			desc: "camelChunkHeuristics",
+			dir:  "camelchunks",
+		},
+	}
 
-	t.Run("exportedAndTypes", func(t *testing.T) {
-		resetFlags()
-		includeExportedFlag = true
-		includeTypesFlag = true
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "exported")
-	})
+	for _, test := range testCases {
+		t.Run(test.desc, func(t *testing.T) {
+			resetFlags()
 
-	t.Run("generatedOptIn", func(t *testing.T) {
-		resetFlags()
-		includeExportedFlag = true
-		includeGeneratedFlag = true
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "generatedcode")
-	})
+			if test.setup != nil {
+				test.setup()
+			}
 
-	t.Run("interfaceMethodsOptIn", func(t *testing.T) {
-		resetFlags()
-		includeInterfaceMethodsFlag = true
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "interfaces")
-	})
+			analysistest.Run(t, analysistest.TestData(), Analyzer, test.dir)
+		})
+	}
 
 	t.Run("fixSuggested", func(t *testing.T) {
 		resetFlags()
 		analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), Analyzer, "fixes")
-	})
-
-	t.Run("narrativeLeadingWords", func(t *testing.T) {
-		resetFlags()
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "narrative")
-	})
-
-	t.Run("allowedPrefixes", func(t *testing.T) {
-		resetFlags()
-		allowedPrefixesFlag = "asm,op"
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "prefixaliases")
-	})
-
-	t.Run("plainWordCamelFlag", func(t *testing.T) {
-		resetFlags()
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "plainwordcamel")
-	})
-
-	t.Run("plainWordCamelFlagDisabled", func(t *testing.T) {
-		resetFlags()
-		skipPlainWordCamelFlag = false
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "plainwordcamelexpect")
-	})
-
-	t.Run("maxDistanceGate", func(t *testing.T) {
-		resetFlags()
-		maxDistFlag = 5
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "maxdistance")
-	})
-
-	t.Run("camelChunkHeuristics", func(t *testing.T) {
-		resetFlags()
-		analysistest.Run(t, analysistest.TestData(), Analyzer, "camelchunks")
 	})
 }
 

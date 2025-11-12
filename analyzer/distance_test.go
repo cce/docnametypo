@@ -2,7 +2,7 @@ package analyzer
 
 import "testing"
 
-func TestPassesDistanceGate(t *testing.T) {
+func Test_passesDistanceGate(t *testing.T) {
 	tests := []struct {
 		doc, sym string
 		dist     int

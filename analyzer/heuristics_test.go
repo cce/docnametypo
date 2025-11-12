@@ -2,7 +2,7 @@ package analyzer
 
 import "testing"
 
-func TestDocFirstWordHasDot(t *testing.T) {
+func Test_docFirstWordHasDot(t *testing.T) {
 	tests := []struct {
 		line string
 		want bool
@@ -21,7 +21,7 @@ func TestDocFirstWordHasDot(t *testing.T) {
 	}
 }
 
-func TestContainsWildcardToken(t *testing.T) {
+func Test_containsWildcardToken(t *testing.T) {
 	tests := []struct {
 		token, line string
 		want        bool

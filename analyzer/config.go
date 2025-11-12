@@ -23,7 +23,9 @@ func (c matchConfig) isAllowedLeadingWord(word string) bool {
 	if word == "" || len(c.allowedLeadingWords) == 0 {
 		return false
 	}
+
 	_, ok := c.allowedLeadingWords[strings.ToLower(word)]
+
 	return ok
 }
 
@@ -34,16 +36,19 @@ func (c matchConfig) matchesAllowedPrefixVariant(docToken, symbol string) bool {
 	}
 
 	symbolLower := strings.ToLower(symbol)
+
 	return slices.ContainsFunc(c.allowedPrefixes, func(rawPrefix string) bool {
 		prefix := strings.TrimSpace(rawPrefix)
 		if prefix == "" || len(symbol) <= len(prefix) {
 			return false
 		}
+
 		if !strings.HasPrefix(symbolLower, strings.ToLower(prefix)) {
 			return false
 		}
 
 		trimmed := symbol[len(prefix):]
+
 		return trimmed != "" && strings.EqualFold(docToken, trimmed)
 	})
 }
@@ -51,12 +56,15 @@ func (c matchConfig) matchesAllowedPrefixVariant(docToken, symbol string) bool {
 // buildAllowedLeadingWords normalizes the CSV list of narrative words.
 func buildAllowedLeadingWords(raw string) map[string]struct{} {
 	words := make(map[string]struct{})
+
 	for _, w := range splitCSV(raw) {
 		if w == "" {
 			continue
 		}
+
 		words[strings.ToLower(w)] = struct{}{}
 	}
+
 	return words
 }
 
@@ -65,12 +73,15 @@ func splitCSV(raw string) []string {
 	if raw == "" {
 		return nil
 	}
+
 	fields := strings.FieldsFunc(raw, func(r rune) bool {
 		switch r {
 		case ',', ';', '/', '\n', '\t', ' ':
 			return true
 		}
+
 		return false
 	})
+
 	return fields
 }
