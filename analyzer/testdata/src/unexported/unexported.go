@@ -45,6 +45,9 @@ func deleteDevice() {}
 // validate that helper outputs do not overlap. (narrative sentence intro)
 func valid() {}
 
+// reflect.DeepEqual does not work for topology.
+func topologyEqual() {}
+
 // ServeHTTP handles requests but the identifier is unexported so the analyzer should still flag it.
 func serveHHTP() {} // want `doc comment starts with 'ServeHTTP' but symbol is 'serveHHTP' \(possible typo or old name\)`
 

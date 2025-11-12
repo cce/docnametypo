@@ -202,6 +202,10 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 		return
 	}
 
+	if docFirstWordHasDot(docLine) {
+		return
+	}
+
 	if cfg.isAllowedLeadingWord(firstTok) {
 		return
 	}
@@ -900,6 +904,29 @@ func hasCamelCaseInterior(name string) bool {
 
 func stripWordToken(word string) string {
 	return strings.Trim(word, " \t:.,;\r\n-*")
+}
+
+func docFirstWordHasDot(line string) bool {
+	if line == "" {
+		return false
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return false
+	}
+	word := fields[0]
+	idx := strings.IndexByte(word, '.')
+	if idx == -1 {
+		return false
+	}
+	prefix := word[:idx]
+	if prefix == "" {
+		return true
+	}
+	if prefix == strings.ToLower(prefix) {
+		return true
+	}
+	return false
 }
 
 func passesDistanceGate(doc, name string, dist int) bool {
