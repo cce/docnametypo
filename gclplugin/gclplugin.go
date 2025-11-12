@@ -25,6 +25,7 @@ func New(raw any) (register.LinterPlugin, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return Plugin{settings: settings}, nil
 }
 
@@ -38,6 +39,7 @@ func (p Plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 	if err := applySettings(p.settings); err != nil {
 		return nil, err
 	}
+
 	return []*analysis.Analyzer{analyzer.Analyzer}, nil
 }
 
@@ -47,55 +49,66 @@ func applySettings(s Settings) error {
 			return fmt.Errorf("set maxdist: %w", err)
 		}
 	}
+
 	if s.IncludeExported != nil {
 		if err := analyzer.Analyzer.Flags.Set("include-exported", strconv.FormatBool(*s.IncludeExported)); err != nil {
 			return fmt.Errorf("set include-exported: %w", err)
 		}
 	}
+
 	if s.IncludeUnexported != nil {
 		if err := analyzer.Analyzer.Flags.Set("include-unexported", strconv.FormatBool(*s.IncludeUnexported)); err != nil {
 			return fmt.Errorf("set include-unexported: %w", err)
 		}
 	}
+
 	if s.IncludeTypes != nil {
 		if err := analyzer.Analyzer.Flags.Set("include-types", strconv.FormatBool(*s.IncludeTypes)); err != nil {
 			return fmt.Errorf("set include-types: %w", err)
 		}
 	}
+
 	if s.IncludeGenerated != nil {
 		if err := analyzer.Analyzer.Flags.Set("include-generated", strconv.FormatBool(*s.IncludeGenerated)); err != nil {
 			return fmt.Errorf("set include-generated: %w", err)
 		}
 	}
+
 	if s.IncludeInterfaceMethods != nil {
 		if err := analyzer.Analyzer.Flags.Set("include-interface-methods", strconv.FormatBool(*s.IncludeInterfaceMethods)); err != nil {
 			return fmt.Errorf("set include-interface-methods: %w", err)
 		}
 	}
+
 	if s.AllowedLeadingWords != nil {
 		if err := analyzer.Analyzer.Flags.Set("allowed-leading-words", *s.AllowedLeadingWords); err != nil {
 			return fmt.Errorf("set allowed-leading-words: %w", err)
 		}
 	}
+
 	if s.AllowedPrefixes != nil {
 		if err := analyzer.Analyzer.Flags.Set("allowed-prefixes", *s.AllowedPrefixes); err != nil {
 			return fmt.Errorf("set allowed-prefixes: %w", err)
 		}
 	}
+
 	if s.SkipPlainWordCamel != nil {
 		if err := analyzer.Analyzer.Flags.Set("skip-plain-word-camel", strconv.FormatBool(*s.SkipPlainWordCamel)); err != nil {
 			return fmt.Errorf("set skip-plain-word-camel: %w", err)
 		}
 	}
+
 	if s.MaxCamelChunkInsert != nil {
 		if err := analyzer.Analyzer.Flags.Set("max-camel-chunk-insert", strconv.Itoa(*s.MaxCamelChunkInsert)); err != nil {
 			return fmt.Errorf("set max-camel-chunk-insert: %w", err)
 		}
 	}
+
 	if s.MaxCamelChunkReplace != nil {
 		if err := analyzer.Analyzer.Flags.Set("max-camel-chunk-replace", strconv.Itoa(*s.MaxCamelChunkReplace)); err != nil {
 			return fmt.Errorf("set max-camel-chunk-replace: %w", err)
 		}
 	}
+
 	return nil
 }

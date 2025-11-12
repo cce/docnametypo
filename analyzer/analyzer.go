@@ -4,6 +4,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -47,6 +48,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if f == nil {
 			continue
 		}
+
 		if tf := pass.Fset.File(f.Pos()); tf != nil {
 			tokenToAST[tf] = f
 		}
@@ -69,12 +71,14 @@ func run(pass *analysis.Pass) (any, error) {
 			if node.Doc == nil || node.Name == nil {
 				return
 			}
+
 			checkSymbol(pass, cfg, node.Doc, node.Name.Name, ast.IsExported(node.Name.Name), kindFunc, node.Name.Pos())
 
 		case *ast.GenDecl:
 			if node.Tok != token.TYPE {
 				return
 			}
+
 			for _, spec := range node.Specs {
 				ts, ok := spec.(*ast.TypeSpec)
 				if !ok || ts.Name == nil {
@@ -86,6 +90,7 @@ func run(pass *analysis.Pass) (any, error) {
 					if doc == nil {
 						doc = node.Doc
 					}
+
 					if doc != nil {
 						checkSymbol(pass, cfg, doc, ts.Name.Name, ast.IsExported(ts.Name.Name), kindType, ts.Name.Pos())
 					}
@@ -132,65 +137,79 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 	if docFirstWordHasDot(docLine) {
 		return
 	}
+
 	if cfg.isAllowedLeadingWord(firstTok) {
 		return
 	}
+
 	if cfg.matchesAllowedPrefixVariant(firstTok, name) {
 		return
 	}
+
 	if isSectionHeader(firstTok, docLine) {
 		return
 	}
+
 	if isNarrativeSentenceIntro(firstTok, docLine) {
 		return
 	}
+
 	if containsWildcardToken(firstTok, docLine) {
 		return
 	}
+
 	if kind == kindFunc && isNarrativeVerbForm(firstTok, name) {
 		return
 	}
+
 	if skipPlainWordCamelFlag && looksLikeSimpleWord(firstTok) && hasCamelCaseInterior(name) {
 		return
 	}
 
 	lenDiff := abs(len(firstTok) - len(name))
+
 	var docLower, nameLower string
-	match := false
+
+	var match bool
+
 	if lenDiff <= maxDistFlag+1 || lenDiff <= maxChunkDiffSize {
 		docLower = strings.ToLower(firstTok)
 		nameLower = strings.ToLower(name)
+
 		d := damerauLevenshtein(docLower, nameLower)
+
 		match = d > 0 && d <= maxDistFlag
 		if match && !passesDistanceGate(docLower, nameLower, d) {
 			match = false
 		}
 	}
 
-	if !match && isCamelSwapVariant(firstTok, name) {
-		match = true
-	}
-	if !match && strings.EqualFold(firstTok, name) && firstTok != name {
-		match = true
-	}
-	if !match && hasSimilarCamelWord(firstTok, name) {
-		match = true
-	}
-	if !match && hasCamelChunkReplacement(firstTok, name, maxCamelChunkReplaceFlag) {
-		match = true
-	}
-	if !match && hasCamelChunkInsertionOrRemoval(firstTok, name, maxCamelChunkInsertFlag) {
-		match = true
-	}
-	if !match && nameLower != "" && docLower != "" && hasSmallChunkDifference(docLower, nameLower, maxChunkDiffSize) {
-		match = true
+	if !match {
+		switch {
+		case isCamelSwapVariant(firstTok, name):
+			match = true
+
+		case strings.EqualFold(firstTok, name) && firstTok != name:
+			match = true
+
+		case hasSimilarCamelWord(firstTok, name):
+			match = true
+
+		case hasCamelChunkReplacement(firstTok, name, maxCamelChunkReplaceFlag):
+			match = true
+
+		case hasCamelChunkInsertionOrRemoval(firstTok, name, maxCamelChunkInsertFlag):
+			match = true
+
+		case nameLower != "" && docLower != "" && hasSmallChunkDifference(docLower, nameLower, maxChunkDiffSize):
+			match = true
+		}
 	}
 
 	if !match {
 		return
 	}
 
-	msg := "doc comment starts with '" + firstTok + "' but symbol is '" + name + "' (possible typo or old name)"
 	var fixes []analysis.SuggestedFix
 	if tokStart.IsValid() && tokEnd.IsValid() && tokStart < tokEnd {
 		fixes = []analysis.SuggestedFix{{
@@ -201,7 +220,7 @@ func checkSymbol(pass *analysis.Pass, cfg matchConfig, doc *ast.CommentGroup, na
 
 	pass.Report(analysis.Diagnostic{
 		Pos:            declPos,
-		Message:        msg,
+		Message:        fmt.Sprintf("doc comment starts with '%s' but symbol is '%s' (possible typo or old name)", firstTok, name),
 		SuggestedFixes: fixes,
 	})
 }
@@ -216,17 +235,21 @@ func checkInterfaceMethods(pass *analysis.Pass, cfg matchConfig, iface *ast.Inte
 		if field == nil || len(field.Names) == 0 {
 			continue
 		}
+
 		doc := field.Doc
 		if doc == nil {
 			doc = field.Comment
 		}
+
 		if doc == nil {
 			continue
 		}
+
 		for _, name := range field.Names {
 			if name == nil {
 				continue
 			}
+
 			checkSymbol(pass, cfg, doc, name.Name, ast.IsExported(name.Name), kindFunc, name.Pos())
 		}
 	}
