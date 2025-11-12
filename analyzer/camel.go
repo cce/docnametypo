@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -25,21 +26,18 @@ func hasCamelChunkReplacement(docToken, symbol string, maxMismatch int) bool {
 
 	mismatches := 0
 	matches := 0
-	for i := range docWords {
-		if docWords[i] == symWords[i] {
+	closeEnough := slices.EqualFunc(docWords, symWords, func(a, b string) bool {
+		if a == b {
 			matches++
-			continue
+			return true
 		}
 		mismatches++
-		if mismatches > maxMismatch {
-			return false
-		}
-	}
-
-	if mismatches == 0 {
+		return mismatches <= maxMismatch
+	})
+	if !closeEnough || mismatches == 0 {
 		return false
 	}
-	return matches >= len(docWords)-maxMismatch && matches > 0
+	return matches > 0 && matches >= len(docWords)-maxMismatch
 }
 
 // hasCamelChunkInsertionOrRemoval tolerates inserted or removed camel chunks.
@@ -71,21 +69,20 @@ func camelSubsequence(shorter, longer []string, maxSkips int) bool {
 		return false
 	}
 
-	i, j := 0, 0
 	skips := 0
-	for i < len(shorter) && j < len(longer) {
-		if shorter[i] == longer[j] {
-			i++
-			j++
-			continue
+	pos := 0
+	for _, chunk := range shorter {
+		idx := slices.Index(longer[pos:], chunk)
+		if idx == -1 {
+			return false
 		}
-		j++
-		skips++
+		skips += idx
 		if skips > maxSkips {
 			return false
 		}
+		pos += idx + 1
 	}
-	return i == len(shorter) && len(shorter) > 0
+	return len(shorter) > 0
 }
 
 // isCamelSwapVariant detects swapped adjacent camel chunks.
@@ -125,19 +122,17 @@ func hasSimilarCamelWord(docToken, symbol string) bool {
 	}
 
 	mismatches := 0
-	for i := range docWords {
-		if docWords[i] == symWords[i] {
-			continue
+	closeEnough := slices.EqualFunc(docWords, symWords, func(a, b string) bool {
+		if a == b {
+			return true
 		}
-		if !wordClose(docWords[i], symWords[i]) {
+		if mismatches == 1 || !wordClose(a, b) {
 			return false
 		}
 		mismatches++
-		if mismatches > 1 {
-			return false
-		}
-	}
-	return mismatches > 0
+		return true
+	})
+	return closeEnough && mismatches == 1
 }
 
 // wordClose reports whether two words are similar under distance heuristics.
@@ -208,13 +203,14 @@ func splitCamelWords(s string) []string {
 	if len(rawParts) == 0 {
 		return []string{strings.ToLower(s)}
 	}
+	rawParts = slices.DeleteFunc(rawParts, func(part string) bool { return part == "" })
+	if len(rawParts) == 0 {
+		return []string{strings.ToLower(s)}
+	}
 
 	words := make([]string, 0, len(rawParts))
 	for i := 0; i < len(rawParts); i++ {
 		part := rawParts[i]
-		if part == "" {
-			continue
-		}
 		if i+1 < len(rawParts) && shouldMergeCamelParts(part, rawParts[i+1]) {
 			part += rawParts[i+1]
 			i++

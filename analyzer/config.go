@@ -1,6 +1,9 @@
 package analyzer
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 type matchConfig struct {
 	allowedLeadingWords map[string]struct{}
@@ -31,24 +34,18 @@ func (c matchConfig) matchesAllowedPrefixVariant(docToken, symbol string) bool {
 	}
 
 	symbolLower := strings.ToLower(symbol)
-	for _, rawPrefix := range c.allowedPrefixes {
+	return slices.ContainsFunc(c.allowedPrefixes, func(rawPrefix string) bool {
 		prefix := strings.TrimSpace(rawPrefix)
 		if prefix == "" || len(symbol) <= len(prefix) {
-			continue
+			return false
 		}
 		if !strings.HasPrefix(symbolLower, strings.ToLower(prefix)) {
-			continue
+			return false
 		}
 
 		trimmed := symbol[len(prefix):]
-		if trimmed == "" {
-			continue
-		}
-		if strings.EqualFold(docToken, trimmed) {
-			return true
-		}
-	}
-	return false
+		return trimmed != "" && strings.EqualFold(docToken, trimmed)
+	})
 }
 
 // buildAllowedLeadingWords normalizes the CSV list of narrative words.

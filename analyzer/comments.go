@@ -36,29 +36,27 @@ func firstDocLine(raw string) (string, int) {
 	}
 	text := raw
 	consumed := 0
-	switch {
-	case strings.HasPrefix(text, "//"):
-		text = text[2:]
+	if trimmed, ok := strings.CutPrefix(text, "//"); ok {
+		text = trimmed
 		consumed += 2
-	case strings.HasPrefix(text, "/*"):
-		text = text[2:]
+	} else if trimmed, ok := strings.CutPrefix(text, "/*"); ok {
+		text = trimmed
 		consumed += 2
-		text = strings.TrimSuffix(text, "*/")
+		if withoutSuffix, ok := strings.CutSuffix(text, "*/"); ok {
+			text = withoutSuffix
+		}
 	}
 
 	currentOffset := consumed
 	for len(text) > 0 {
-		newline := strings.IndexByte(text, '\n')
-		var line string
-		var advance int
-		if newline == -1 {
-			line = text
-			advance = len(text)
-			text = ""
+		line := text
+		advance := len(text)
+		if before, after, found := strings.Cut(line, "\n"); found {
+			line = before
+			advance = len(before) + 1
+			text = after
 		} else {
-			line = text[:newline]
-			advance = newline + 1
-			text = text[advance:]
+			text = ""
 		}
 
 		lineOffset := currentOffset
@@ -78,27 +76,15 @@ func trimDocLine(line string) (string, int) {
 	if line == "" {
 		return "", 0
 	}
-	i := 0
-	for i < len(line) && (line[i] == ' ' || line[i] == '\t' || line[i] == '\r') {
-		i++
+	consumed := 0
+	trimLeft := func(cutset string) {
+		trimmed := strings.TrimLeft(line, cutset)
+		consumed += len(line) - len(trimmed)
+		line = trimmed
 	}
-	consumed := i
-	line = line[i:]
-
-	i = 0
-	for i < len(line) && (line[i] == '*' || line[i] == ' ' || line[i] == '\t') {
-		i++
-	}
-	consumed += i
-	line = line[i:]
-
-	i = 0
-	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
-		i++
-	}
-	consumed += i
-	line = line[i:]
-
+	trimLeft(" \t\r")
+	trimLeft("* \t")
+	trimLeft(" \t")
 	line = strings.TrimRight(line, " \t\r")
 	return line, consumed
 }
@@ -161,15 +147,8 @@ func isWordBoundary(b byte) bool {
 
 // trimPointerPrefixes removes leading pointer markers before scanning.
 func trimPointerPrefixes(s string) (string, int) {
-	i := 0
-	for i < len(s) {
-		if s[i] == '*' || s[i] == '&' {
-			i++
-			continue
-		}
-		break
-	}
-	return s[i:], i
+	trimmed := strings.TrimLeft(s, "*&")
+	return trimmed, len(s) - len(trimmed)
 }
 
 // leadingIdentRun reads the initial identifier characters from a string.
